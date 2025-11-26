@@ -2,11 +2,13 @@ import { Component, signal, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { AuthService } from '../../services/auth.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
-    selector: 'app-login',
-    imports: [CommonModule, FormsModule],
-    template: `
+  selector: 'app-login',
+  imports: [CommonModule, FormsModule],
+  template: `
     <div class="login-container">
       <div class="login-card glass-card">
         <!-- Logo -->
@@ -34,6 +36,7 @@ import { CommonModule } from '@angular/common';
               name="email"
               class="input-field"
               placeholder="Enter your email"
+              [disabled]="isLoading()"
               required
             />
           </div>
@@ -46,6 +49,7 @@ import { CommonModule } from '@angular/common';
               name="password"
               class="input-field"
               placeholder="Enter your password"
+              [disabled]="isLoading()"
               required
             />
           </div>
@@ -56,8 +60,17 @@ import { CommonModule } from '@angular/common';
             </div>
           }
 
-          <button type="submit" class="btn btn-primary full-width">
-            Sign In
+          <button 
+            type="submit" 
+            class="btn btn-primary full-width"
+            [disabled]="isLoading()"
+          >
+            @if (isLoading()) {
+              <span class="spinner"></span>
+              Signing in...
+            } @else {
+              Sign In
+            }
           </button>
         </form>
 
@@ -68,7 +81,7 @@ import { CommonModule } from '@angular/common';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .login-container {
       min-height: 100vh;
       display: flex;
@@ -135,6 +148,27 @@ import { CommonModule } from '@angular/common';
       border-radius: var(--radius-md);
       margin-bottom: 1rem;
       font-size: 0.875rem;
+      animation: shake 0.3s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     .demo-info {
@@ -146,6 +180,11 @@ import { CommonModule } from '@angular/common';
     .demo-info p {
       color: var(--text-muted);
       font-size: 0.8125rem;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     @media (max-width: 768px) {
@@ -160,22 +199,44 @@ import { CommonModule } from '@angular/common';
   `]
 })
 export class LoginComponent {
-    private router = inject(Router);
+  private router = inject(Router);
+  private authService = inject(AuthService);
+  private notificationService = inject(NotificationService);
 
-    email = signal('');
-    password = signal('');
-    error = signal('');
+  email = signal('');
+  password = signal('');
+  error = signal('');
+  isLoading = signal(false);
 
-    login(): void {
-        // Simple validation
-        if (!this.email() || !this.password()) {
-            this.error.set('Please enter both email and password');
-            return;
-        }
+  async login(): Promise<void> {
+    // Clear previous errors
+    this.error.set('');
 
-        // For demo purposes, accept any credentials
-        // In a real app, you would call an authentication service here
-        localStorage.setItem('isAuthenticated', 'true');
-        this.router.navigate(['/dashboard']);
+    // Simple validation
+    if (!this.email() || !this.password()) {
+      this.error.set('Please enter both email and password');
+      this.notificationService.error('Please enter both email and password');
+      return;
     }
+
+    // Start loading
+    this.isLoading.set(true);
+
+    try {
+      const success = await this.authService.login(this.email(), this.password());
+
+      if (success) {
+        this.notificationService.success('Welcome back! Redirecting to dashboard...');
+        this.router.navigate(['/dashboard']);
+      } else {
+        this.error.set('Invalid credentials');
+        this.notificationService.error('Invalid credentials. Please try again.');
+      }
+    } catch (err) {
+      this.error.set('An error occurred. Please try again.');
+      this.notificationService.error('An error occurred. Please try again.');
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
 }

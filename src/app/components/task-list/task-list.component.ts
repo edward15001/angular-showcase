@@ -48,13 +48,37 @@ import { Task } from '../../models/task.model';
           </select>
           <button class="btn btn-primary" (click)="addTask()">Add Task</button>
         </div>
-        <!-- Search Input -->
-        <input
-          type="text"
-          [(ngModel)]="searchTerm"
-          placeholder="Search tasks..."
-          class="input-field"
-        />
+      </div>
+
+      <!-- Search Section -->
+      <div class="search-section glass-card">
+        <div class="search-wrapper">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            type="text"
+            [(ngModel)]="searchTerm"
+            placeholder="Search tasks by title or description..."
+            class="input-field search-input"
+          />
+          @if (searchTerm()) {
+            <button class="clear-search-btn" (click)="clearSearch()" title="Clear search">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          }
+        </div>
+        @if (searchTerm()) {
+          <div class="search-results-count">
+            <span class="badge badge-success">
+              {{ filteredTasks().length }} {{ filteredTasks().length === 1 ? 'result' : 'results' }} found
+            </span>
+          </div>
+        }
       </div>
 
       <!-- Filters -->
@@ -102,26 +126,75 @@ import { Task } from '../../models/task.model';
     .header { text-align: center; margin-bottom: 2rem; animation: fadeIn 0.5s ease-out; }
     .header h2 { font-size: 2.5rem; color: var(--text-primary); margin-bottom: 0.5rem; }
     .header p { font-size: 1.125rem; color: var(--text-secondary); }
-    .add-task-form { margin-bottom: 2rem; animation: scaleIn 0.4s ease-out; }
+    
+    /* Add Task Form */
+    .add-task-form { margin-bottom: 1.5rem; animation: scaleIn 0.4s ease-out; }
     .add-task-form h3 { font-size: 1.25rem; margin-bottom: 1rem; color: var(--text-primary); }
     .input-field { margin-bottom: 1rem; }
     .form-row { display: flex; gap: 1rem; }
     .form-row .input-field { flex: 1; margin-bottom: 0; }
-    .filters-section { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; padding: 1.5rem; background: var(--glass-bg); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); }
+    
+    /* Search Section */
+    .search-section { margin-bottom: 1.5rem; animation: scaleIn 0.5s ease-out; padding: 1.25rem; }
+    .search-wrapper { position: relative; display: flex; align-items: center; gap: 0.75rem; }
+    .search-icon { position: absolute; left: 1rem; color: var(--text-muted); pointer-events: none; z-index: 1; }
+    .search-input { padding-left: 3rem !important; padding-right: 3rem !important; margin-bottom: 0 !important; }
+    .clear-search-btn { 
+      position: absolute; right: 0.75rem; background: transparent; border: none; 
+      color: var(--text-muted); cursor: pointer; display: flex; align-items: center; 
+      justify-content: center; padding: 0.5rem; border-radius: var(--radius-sm); 
+      transition: all var(--transition-fast); 
+    }
+    .clear-search-btn:hover { background: var(--bg-tertiary); color: var(--primary); transform: scale(1.1); }
+    .search-results-count { margin-top: 1rem; text-align: center; }
+    
+    /* Filters Section */
+    .filters-section { 
+      display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; 
+      padding: 1.5rem; background: var(--glass-bg); backdrop-filter: blur(10px); 
+      border: 1px solid var(--glass-border); border-radius: var(--radius-lg); 
+    }
     .filter-group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
     .filter-label { font-weight: 600; color: var(--text-primary); min-width: 70px; font-size: 0.9rem; }
-    .btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
+    .btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; min-height: 44px; }
+    
+    /* Tasks Container */
     .tasks-container { animation: fadeIn 0.6s ease-out; }
     .empty-state { text-align: center; padding: 3rem 2rem; display: flex; flex-direction: column; align-items: center; }
     .empty-state h3 { font-size: 1.5rem; margin-bottom: 0.5rem; }
     .empty-state p { color: var(--text-muted); }
+    
+    /* Animations */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    
+    /* Tablet Breakpoint */
+    @media (max-width: 1024px) {
+      .task-list-container { padding: 1.5rem 1rem; }
+      .header h2 { font-size: 2rem; }
+    }
+    
+    /* Mobile Large - Tablet Portrait */
     @media (max-width: 768px) {
+      .task-list-container { padding: 1rem 0.75rem; }
+      .header h2 { font-size: 1.75rem; }
+      .header p { font-size: 1rem; }
       .form-row { flex-direction: column; }
-      .filter-group { flex-direction: column; align-items: flex-start; }
-      .filter-label { width: 100%; }
-      .btn-sm { flex: 1; width: 100%; }
+      .filter-group { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+      .filter-label { width: 100%; margin-bottom: 0.25rem; }
+      .btn-sm { width: 100%; justify-content: center; }
+      .filters-section { padding: 1rem; }
+      .search-section { padding: 1rem; }
+    }
+    
+    /* Mobile Small */
+    @media (max-width: 480px) {
+      .task-list-container { padding: 0.75rem 0.5rem; }
+      .header { margin-bottom: 1.5rem; }
+      .header h2 { font-size: 1.5rem; }
+      .header p { font-size: 0.9rem; }
+      .add-task-form, .search-section, .filters-section { padding: 0.875rem; margin-bottom: 1rem; }
+      .empty-state { padding: 2rem 1rem; }
     }
   `]
 })
@@ -167,6 +240,10 @@ export class TaskListComponent {
     this.newTaskTitle.set('');
     this.newTaskDescription.set('');
     this.newTaskPriority.set('medium');
+    this.searchTerm.set('');
+  }
+
+  clearSearch(): void {
     this.searchTerm.set('');
   }
 

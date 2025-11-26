@@ -4,7 +4,10 @@ export interface Task {
     description: string;
     completed: boolean;
     priority: 'low' | 'medium' | 'high';
+    category?: string;
+    tags?: string[];
     createdAt: Date;
+    updatedAt: Date;
     dueDate?: Date;
 }
 
