@@ -84,11 +84,6 @@ import { NotificationService } from '../../services/notification.service';
           </p>
         </div>
 
-
-        <!-- Demo Info -->
-        <div class="demo-info">
-          <p>Demo credentials: any email/password combination</p>
-        </div>
       </div>
     </div>
   `,

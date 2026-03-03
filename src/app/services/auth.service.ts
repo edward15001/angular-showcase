@@ -50,7 +50,7 @@ export class AuthService {
         }
     }
 
-    private updateUserState(supabaseUser: any) {
+    private async updateUserState(supabaseUser: any) {
         if (!supabaseUser || !supabaseUser.email) {
             this._isAuthenticated.set(false);
             this._currentUser.set(null);
@@ -58,10 +58,24 @@ export class AuthService {
         }
 
         const email = supabaseUser.email;
-        const name = email.split('@')[0]
+        let name = email.split('@')[0]
             .split('.')
             .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
             .join(' ');
+
+        // Try to fetch profile from database
+        try {
+            const client = this.supabaseService.getClient();
+            const { data } = await client
+                .from('profiles')
+                .select('full_name')
+                .eq('id', supabaseUser.id)
+                .single();
+
+            if (data?.full_name) {
+                name = data.full_name;
+            }
+        } catch (e) { /* ignore and use fallback name */ }
 
         const user: User = {
             email,

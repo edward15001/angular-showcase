@@ -1,5 +1,7 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { Task, TaskStats } from '../models/task.model';
+import { SupabaseService } from './supabase/supabase';
+import { AuthService } from './auth.service';
 
 export type SortOption = 'date' | 'priority' | 'title' | 'dueDate';
 
@@ -7,56 +9,12 @@ export type SortOption = 'date' | 'priority' | 'title' | 'dueDate';
     providedIn: 'root'
 })
 export class TaskService {
-    // Signal-based state - NEW ANGULAR FEATURE!
-    private tasksSignal = signal<Task[]>([
-        {
-            id: '1',
-            title: 'Learn Angular Signals',
-            description: 'Explore the new reactivity system based on signals',
-            completed: true,
-            priority: 'high',
-            category: 'Development',
-            tags: ['angular', 'learning'],
-            createdAt: new Date('2025-11-20'),
-            updatedAt: new Date('2025-11-20'),
-            dueDate: new Date('2025-11-25')
-        },
-        {
-            id: '2',
-            title: 'Implement Standalone Components',
-            description: 'Migrate to the new architecture without NgModules',
-            completed: true,
-            priority: 'high',
-            category: 'Development',
-            tags: ['angular', 'architecture'],
-            createdAt: new Date('2025-11-21'),
-            updatedAt: new Date('2025-11-21')
-        },
-        {
-            id: '3',
-            title: 'Create premium design with CSS',
-            description: 'Use glassmorphism and modern gradients',
-            completed: false,
-            priority: 'medium',
-            category: 'Design',
-            tags: ['css', 'ui'],
-            createdAt: new Date('2025-11-22'),
-            updatedAt: new Date('2025-11-22'),
-            dueDate: new Date('2025-11-26')
-        },
-        {
-            id: '4',
-            title: 'Prepare presentation',
-            description: 'Demonstrate the new Angular trends',
-            completed: false,
-            priority: 'high',
-            category: 'Presentation',
-            tags: ['demo', 'angular'],
-            createdAt: new Date('2025-11-23'),
-            updatedAt: new Date('2025-11-23'),
-            dueDate: new Date('2025-11-27')
-        }
-    ]);
+    // Services
+    private supabase = inject(SupabaseService);
+    private authService = inject(AuthService);
+
+    // Signal-based state
+    private tasksSignal = signal<Task[]>([]);
 
     // Available categories signal
     private categoriesSignal = signal<string[]>(['Development', 'Design', 'Presentation', 'Personal', 'Work']);
@@ -64,6 +22,52 @@ export class TaskService {
 
     // Public read-only signal
     tasks = this.tasksSignal.asReadonly();
+
+    constructor() {
+        // Fetch tasks when user logs in or refreshes
+        // This leverages Angular effect() effectively or manual subscription 
+        // We will do a poll check or just fetch when the service instantiates
+        this.fetchTasks();
+    }
+
+    async fetchTasks() {
+        // Use a short delay to ensure Auth finishes restoring 
+        // In a more robust setup, you'd trigger this Reactively via an Effect
+        setTimeout(async () => {
+            const user = await this.supabase.getUser();
+            if (!user) return;
+
+            const client = this.supabase.getClient();
+            const { data, error } = await client
+                .from('tasks')
+                .select('*')
+                .order('createdAt', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching tasks:", error);
+                return;
+            }
+
+            if (data) {
+                // Map from DB columns to our model
+                const parsedTasks = data.map((dbTask: any) => ({
+                    id: dbTask.id,
+                    user_id: dbTask.user_id,
+                    title: dbTask.title,
+                    description: dbTask.description || '',
+                    completed: dbTask.completed,
+                    priority: dbTask.priority,
+                    category: dbTask.category || undefined,
+                    tags: dbTask.tags || [],
+                    createdAt: new Date(dbTask.createdAt),
+                    updatedAt: new Date(dbTask.updatedAt),
+                    dueDate: dbTask.dueDate ? new Date(dbTask.dueDate) : undefined
+                })) as Task[];
+
+                this.tasksSignal.set(parsedTasks);
+            }
+        }, 500);
+    }
 
     // Computed signals - automatically update when tasks change!
     stats = computed<TaskStats>(() => {
@@ -95,30 +99,105 @@ export class TaskService {
         return Array.from(tags).sort();
     });
 
-    addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): void {
-        const now = new Date();
-        const newTask: Task = {
-            ...task,
-            id: Date.now().toString(),
-            createdAt: now,
-            updatedAt: now
+    async addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) {
+        const _user = await this.supabase.getUser();
+        if (!_user) return;
+
+        const dbTask = {
+            user_id: _user.id,
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            category: task.category,
+            tags: task.tags,
+            dueDate: task.dueDate?.toISOString()
         };
-        this.tasksSignal.update(tasks => [...tasks, newTask]);
+
+        const client = this.supabase.getClient();
+        const { data, error } = await client.from('tasks').insert(dbTask).select().single();
+
+        if (error || !data) {
+            console.error("Error creating task", error);
+            return;
+        }
+
+        // Add to local state
+        const newTask: Task = {
+            id: data.id,
+            user_id: data.user_id,
+            title: data.title,
+            description: data.description || '',
+            completed: data.completed,
+            priority: data.priority,
+            category: data.category || undefined,
+            tags: data.tags || [],
+            createdAt: new Date(data.createdAt),
+            updatedAt: new Date(data.updatedAt),
+            dueDate: data.dueDate ? new Date(data.dueDate) : undefined
+        };
+
+        this.tasksSignal.update(tasks => [newTask, ...tasks]);
     }
 
-    toggleTask(id: string): void {
+    async toggleTask(id: string) {
+        const currentTask = this.tasksSignal().find(t => t.id === id);
+        if (!currentTask) return;
+
+        const newStatus = !currentTask.completed;
+
+        const client = this.supabase.getClient();
+        const { error } = await client.from('tasks').update({
+            completed: newStatus,
+            updatedAt: new Date().toISOString()
+        }).eq('id', id);
+
+        if (error) {
+            console.error("Error toggling task", error);
+            return;
+        }
+
         this.tasksSignal.update(tasks =>
             tasks.map(task =>
-                task.id === id ? { ...task, completed: !task.completed, updatedAt: new Date() } : task
+                task.id === id ? { ...task, completed: newStatus, updatedAt: new Date() } : task
             )
         );
     }
 
-    deleteTask(id: string): void {
+    async deleteTask(id: string) {
+        const client = this.supabase.getClient();
+        const { error } = await client.from('tasks').delete().eq('id', id);
+
+        if (error) {
+            console.error("Error deleting task:", error);
+            return;
+        }
+
         this.tasksSignal.update(tasks => tasks.filter(task => task.id !== id));
     }
 
-    updateTask(id: string, updates: Partial<Task>): void {
+    async updateTask(id: string, updates: Partial<Task>) {
+        const dbUpdates: any = {
+            ...updates,
+            updatedAt: new Date().toISOString()
+        };
+
+        // Remove locally restricted properties 
+        delete dbUpdates.id;
+        delete dbUpdates.createdAt;
+        delete dbUpdates.user_id;
+
+        if (updates.dueDate) {
+            dbUpdates.dueDate = updates.dueDate.toISOString();
+        }
+
+        const client = this.supabase.getClient();
+        const { error } = await client.from('tasks').update(dbUpdates).eq('id', id);
+
+        if (error) {
+            console.error("Error updating task", error);
+            return;
+        }
+
         this.tasksSignal.update(tasks =>
             tasks.map(task =>
                 task.id === id ? { ...task, ...updates, updatedAt: new Date() } : task

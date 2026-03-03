@@ -12,6 +12,11 @@ export class SupabaseService {
     this.supabase = createClient(environment.supabaseUrl, environment.supabaseKey);
   }
 
+  // Obtener el cliente nativo
+  getClient(): SupabaseClient {
+    return this.supabase;
+  }
+
   // Obtener el usuario actual
   async getUser(): Promise<User | null> {
     const { data: { user } } = await this.supabase.auth.getUser();
