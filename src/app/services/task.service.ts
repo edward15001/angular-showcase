@@ -69,6 +69,10 @@ export class TaskService {
         }, 500);
     }
 
+    clearTasks() {
+        this.tasksSignal.set([]);
+    }
+
     // Computed signals - automatically update when tasks change!
     stats = computed<TaskStats>(() => {
         const tasks = this.tasksSignal();

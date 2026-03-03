@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
+import { Injectable, signal, computed, inject, PLATFORM_ID, Injector } from '@angular/core';
 import { Router } from '@angular/router';
 import { isPlatformBrowser } from '@angular/common';
 import { SupabaseService } from './supabase/supabase';
@@ -85,6 +85,15 @@ export class AuthService {
 
         this._currentUser.set(user);
         this._isAuthenticated.set(true);
+
+        // Notify TaskService to fetch fresh tasks for the new user
+        try {
+            const { TaskService } = await import('./task.service');
+            const taskService = this.injector.get(TaskService);
+            if (taskService) {
+                taskService.fetchTasks();
+            }
+        } catch (e) { }
     }
 
     /**
@@ -121,6 +130,8 @@ export class AuthService {
         }
     }
 
+    private injector = inject(Injector);
+
     /**
      * Logout current user
      */
@@ -129,6 +140,20 @@ export class AuthService {
             await this.supabaseService.signOut();
             this._isAuthenticated.set(false);
             this._currentUser.set(null);
+
+            // Fix memory leak on shared service
+            try {
+                // We use dynamic import to avoid circular dependency loops
+                // AuthService -> TaskService -> AuthService
+                const { TaskService } = await import('./task.service');
+                const taskService = this.injector.get(TaskService);
+                if (taskService) {
+                    taskService.clearTasks();
+                }
+            } catch (e) {
+                console.error("Could not clear tasks on logout", e);
+            }
+
             this.router.navigate(['/login']);
         } catch (error) {
             console.error('Logout error:', error);
