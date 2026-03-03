@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { Router } from '@angular/router';
 import { isPlatformBrowser } from '@angular/common';
+import { SupabaseService } from './supabase/supabase';
 
 export interface User {
     email: string;
@@ -12,12 +13,9 @@ export interface User {
     providedIn: 'root'
 })
 export class AuthService {
-    private readonly STORAGE_KEY = 'isAuthenticated';
-    private readonly USER_KEY = 'currentUser';
-
     // Signals for reactive state management
-    private _isAuthenticated = signal<boolean>(this.checkStoredAuth());
-    private _currentUser = signal<User | null>(this.getStoredUser());
+    private _isAuthenticated = signal<boolean>(false);
+    private _currentUser = signal<User | null>(null);
 
     // Public readonly signals
     isAuthenticated = this._isAuthenticated.asReadonly();
@@ -35,85 +33,92 @@ export class AuthService {
     });
 
     private platformId = inject(PLATFORM_ID);
+    private supabaseService = inject(SupabaseService);
+    private router = inject(Router);
 
-    constructor(private router: Router) { }
+    constructor() {
+        if (isPlatformBrowser(this.platformId)) {
+            // Restore session automatically on startup
+            this.supabaseService.getUser().then(user => {
+                if (user) {
+                    this.updateUserState(user);
+                }
+            });
+
+            // Listen for auth events (login, logout) implicitly done by Supabase client
+            // We could also hook into supabase.auth.onAuthStateChange if exposed by SupabaseService
+        }
+    }
+
+    private updateUserState(supabaseUser: any) {
+        if (!supabaseUser || !supabaseUser.email) {
+            this._isAuthenticated.set(false);
+            this._currentUser.set(null);
+            return;
+        }
+
+        const email = supabaseUser.email;
+        const name = email.split('@')[0]
+            .split('.')
+            .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+
+        const user: User = {
+            email,
+            name,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ff6b35&color=fff`
+        };
+
+        this._currentUser.set(user);
+        this._isAuthenticated.set(true);
+    }
 
     /**
-     * Authenticate user with email and password
-     * In a real app, this would call an API
+     * Authenticate user with email and password via Supabase
      */
-    login(email: string, password: string): Promise<boolean> {
-        return new Promise((resolve) => {
-            // Simulate API call delay
-            setTimeout(() => {
-                if (email && password) {
-                    // Extract name from email for demo
-                    const name = email.split('@')[0]
-                        .split('.')
-                        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-                        .join(' ');
+    async login(email: string, password: string): Promise<boolean> {
+        try {
+            const data = await this.supabaseService.signIn(email, password);
+            if (data.user) {
+                this.updateUserState(data.user);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Login error:', error);
+            return false;
+        }
+    }
 
-                    const user: User = {
-                        email,
-                        name,
-                        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ff6b35&color=fff`
-                    };
-
-                    this._currentUser.set(user);
-                    this._isAuthenticated.set(true);
-
-                    // Persist to localStorage
-                    if (isPlatformBrowser(this.platformId)) {
-                        localStorage.setItem(this.STORAGE_KEY, 'true');
-                        localStorage.setItem(this.USER_KEY, JSON.stringify(user));
-                    }
-
-                    resolve(true);
-                } else {
-                    resolve(false);
-                }
-            }, 500);
-        });
+    /**
+     * Register a new user with email and password via Supabase
+     */
+    async signup(email: string, password: string): Promise<boolean> {
+        try {
+            const data = await this.supabaseService.signUp(email, password);
+            if (data.user) {
+                this.updateUserState(data.user);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Signup error:', error);
+            throw error; // Let the component handle display
+        }
     }
 
     /**
      * Logout current user
      */
-    logout(): void {
-        this._isAuthenticated.set(false);
-        this._currentUser.set(null);
-        if (isPlatformBrowser(this.platformId)) {
-            localStorage.removeItem(this.STORAGE_KEY);
-            localStorage.removeItem(this.USER_KEY);
+    async logout(): Promise<void> {
+        try {
+            await this.supabaseService.signOut();
+            this._isAuthenticated.set(false);
+            this._currentUser.set(null);
+            this.router.navigate(['/login']);
+        } catch (error) {
+            console.error('Logout error:', error);
         }
-        this.router.navigate(['/login']);
-    }
-
-    /**
-     * Check if user is authenticated from localStorage
-     */
-    private checkStoredAuth(): boolean {
-        if (isPlatformBrowser(this.platformId)) {
-            return localStorage.getItem(this.STORAGE_KEY) === 'true';
-        }
-        return false;
-    }
-
-    /**
-     * Get stored user from localStorage
-     */
-    private getStoredUser(): User | null {
-        if (isPlatformBrowser(this.platformId)) {
-            const userJson = localStorage.getItem(this.USER_KEY);
-            if (userJson) {
-                try {
-                    return JSON.parse(userJson);
-                } catch {
-                    return null;
-                }
-            }
-        }
-        return null;
     }
 
     /**

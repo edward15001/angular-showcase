@@ -23,8 +23,8 @@ import { NotificationService } from '../../services/notification.service';
         </div>
 
         <!-- Title -->
-        <h1>Angular Task Manager</h1>
-        <p class="subtitle">Sign in to access your tasks</p>
+        <h1>{{ isLoginMode() ? 'Welcome Back' : 'Create Account' }}</h1>
+        <p class="subtitle">{{ isLoginMode() ? 'Sign in to access your tasks' : 'Sign up to get started' }}</p>
 
         <!-- Login Form -->
         <form (ngSubmit)="login()" class="login-form">
@@ -67,12 +67,23 @@ import { NotificationService } from '../../services/notification.service';
           >
             @if (isLoading()) {
               <span class="spinner"></span>
-              Signing in...
+              {{ isLoginMode() ? 'Signing in...' : 'Signing up...' }}
             } @else {
-              Sign In
+              {{ isLoginMode() ? 'Sign In' : 'Sign Up' }}
             }
           </button>
         </form>
+
+        <!-- Toggle Mode -->
+        <div class="toggle-mode">
+          <p>
+            {{ isLoginMode() ? "Don't have an account?" : "Already have an account?" }}
+            <button type="button" class="btn-link" (click)="toggleMode()" [disabled]="isLoading()">
+              {{ isLoginMode() ? 'Sign up' : 'Sign in' }}
+            </button>
+          </p>
+        </div>
+
 
         <!-- Demo Info -->
         <div class="demo-info">
@@ -182,6 +193,30 @@ import { NotificationService } from '../../services/notification.service';
       font-size: 0.8125rem;
     }
 
+    .toggle-mode {
+      margin-top: 1.5rem;
+      text-align: center;
+    }
+
+    .toggle-mode p {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .btn-link {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-left: 0.25rem;
+    }
+
+    .btn-link:hover {
+      text-decoration: underline;
+    }
+
     button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
@@ -203,10 +238,16 @@ export class LoginComponent {
   private authService = inject(AuthService);
   private notificationService = inject(NotificationService);
 
+  isLoginMode = signal(true);
   email = signal('');
   password = signal('');
   error = signal('');
   isLoading = signal(false);
+
+  toggleMode() {
+    this.isLoginMode.update(mode => !mode);
+    this.error.set('');
+  }
 
   async login(): Promise<void> {
     // Clear previous errors
@@ -223,17 +264,29 @@ export class LoginComponent {
     this.isLoading.set(true);
 
     try {
-      const success = await this.authService.login(this.email(), this.password());
+      let success = false;
 
-      if (success) {
-        this.notificationService.success('Welcome back! Redirecting to dashboard...');
-        this.router.navigate(['/dashboard']);
+      if (this.isLoginMode()) {
+        success = await this.authService.login(this.email(), this.password());
+        if (success) {
+          this.notificationService.success('Welcome back! Redirecting to dashboard...');
+          this.router.navigate(['/dashboard']);
+        } else {
+          this.error.set('Invalid credentials');
+          this.notificationService.error('Invalid credentials. Please try again.');
+        }
       } else {
-        this.error.set('Invalid credentials');
-        this.notificationService.error('Invalid credentials. Please try again.');
+        success = await this.authService.signup(this.email(), this.password());
+        if (success) {
+          this.notificationService.success('Account created successfully!');
+          this.router.navigate(['/dashboard']);
+        } else {
+          this.error.set('Could not create account. Email might already be registered.');
+          this.notificationService.error('Signup failed.');
+        }
       }
-    } catch (err) {
-      this.error.set('An error occurred. Please try again.');
+    } catch (err: any) {
+      this.error.set(err.message || 'An error occurred. Please try again.');
       this.notificationService.error('An error occurred. Please try again.');
     } finally {
       this.isLoading.set(false);
